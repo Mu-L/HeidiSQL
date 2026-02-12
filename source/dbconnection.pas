@@ -7646,35 +7646,53 @@ procedure TPGConnection.FetchDbObjects(db: String; var Cache: TDBObjectList);
 var
   obj: TDBObject;
   Results: TDBQuery;
-  tp, SchemaTable: String;
-  DataLenClause, IndexLenClause: String;
+  tp: String;
+  DataLenClause, IndexLenClause, ProKindClause: String;
 begin
   // Tables, views and procedures
   Results := nil;
   try
-    // See http://www.heidisql.com/forum.php?t=16429
-    if ServerVersionInt >= 70300 then
-      SchemaTable := 'QUOTE_IDENT(t.TABLE_SCHEMA) || '+EscapeString('.')+' || QUOTE_IDENT(t.TABLE_NAME)'
-    else
-      SchemaTable := EscapeString(FQuoteChar)+' || t.TABLE_SCHEMA || '+EscapeString(FQuoteChar+'.'+FQuoteChar)+' || t.TABLE_NAME || '+EscapeString(FQuoteChar);
     // See http://www.heidisql.com/forum.php?t=16996
     if Parameters.FullTableStatus and (ServerVersionInt >= 90000) then
-      DataLenClause := 'pg_table_size('+SchemaTable+')::bigint'
+      DataLenClause := 'pg_table_size(format(''%I.%I'', n.nspname, c.relname))::bigint'
     else
       DataLenClause := 'NULL';
     // See https://www.heidisql.com/forum.php?t=34635
     if Parameters.FullTableStatus and (ServerVersionInt >= 80100) then
-      IndexLenClause := 'pg_relation_size('+SchemaTable+')::bigint'
+      IndexLenClause := 'pg_relation_size(format(''%I.%I'', n.nspname, c.relname))::bigint'
     else
       IndexLenClause := 'relpages::bigint * '+SIZE_KB.ToString;
-    Results := GetResults('SELECT *,'+
-      ' '+DataLenClause+' AS data_length,'+
-      ' '+IndexLenClause+' AS index_length,'+
-      ' c.reltuples, obj_description(c.oid) AS comment'+
-      ' FROM '+QuoteIdent(InfSch)+'.'+QuoteIdent('tables')+' AS t'+
-      ' LEFT JOIN '+QuoteIdent('pg_namespace')+' n ON t.table_schema = n.nspname'+
-      ' LEFT JOIN '+QuoteIdent('pg_class')+' c ON n.oid = c.relnamespace AND c.relname=t.table_name'+
-      ' WHERE t.'+QuoteIdent('table_schema')+'='+EscapeString(db)  // Use table_schema when using schemata
+    if ServerVersionInt >= 110000 then
+      ProKindClause := 'p.prokind'
+    else
+      ProKindClause := EscapeString('p');
+    Results := GetResults('SELECT '+
+      '    n.nspname                          AS schema_name, '+
+      '    c.relname                          AS object_name, '+
+      '    c.relkind                          AS object_kind, '+
+      '    '+DataLenClause+'                  AS data_length, '+
+      '    '+IndexLenClause+'                 AS index_length, '+
+      '    c.reltuples, '+
+      '    obj_description(c.oid)             AS comment, '+
+      '    NULL                               AS proargtypes '+
+      'FROM pg_class c '+
+      'JOIN pg_namespace n ON n.oid = c.relnamespace '+
+      'WHERE n.nspname = '+EscapeString(db)+' '+
+      '  AND c.relkind IN (''r'',''v'',''m'') '+
+      'UNION ALL '+
+      'SELECT '+
+      '    n.nspname                          AS schema_name, '+
+      '    p.proname                          AS object_name, '+
+      '    '+ProKindClause+'                  AS object_kind, '+
+      '    NULL::bigint                       AS data_length, '+
+      '    NULL::bigint                       AS index_length, '+
+      '    NULL::real                         AS reltuples, '+
+      '    obj_description(p.oid)             AS comment, '+
+      '    p.proargtypes '+
+      'FROM pg_proc p '+
+      'JOIN pg_namespace n ON n.oid = p.pronamespace '+
+      'WHERE n.nspname = '+EscapeString(db)+' '+
+      '  AND p.prokind IN (''f'',''p'') '
       );
   except
     on E:EDbError do;
@@ -7683,11 +7701,11 @@ begin
     while not Results.Eof do begin
       obj := TDBObject.Create(Self);
       Cache.Add(obj);
-      obj.Name := Results.Col('table_name');
+      obj.Name := Results.Col('object_name');
       obj.Created := 0;
       obj.Updated := 0;
       obj.Database := db;
-      obj.Schema := Results.Col('table_schema'); // Remove when using schemata
+      obj.Schema := Results.Col('schema_name'); // Remove when using schemata
       obj.Comment := Results.Col('comment');
       obj.Rows := StrToInt64Def(Results.Col('reltuples'), obj.Rows);
       obj.DataLen := StrToInt64Def(Results.Col('data_length'), obj.DataLen);
@@ -7695,41 +7713,18 @@ begin
       obj.Size := obj.DataLen + obj.IndexLen;
       Inc(Cache.FDataSize, Obj.Size);
       Cache.FLargestObjectSize := Max(Cache.FLargestObjectSize, Obj.Size);
-      tp := Results.Col('table_type', True);
-      if tp = 'VIEW' then
+      tp := Results.Col('object_kind', True);
+      if tp = 'r' then
+        obj.NodeType := lntTable
+      else if tp = 'v' then
         obj.NodeType := lntView
-      else
-        obj.NodeType := lntTable;
-      Results.Next;
-    end;
-    FreeAndNil(Results);
-  end;
-
-  // Stored functions and procedures in PostgreSQL.
-  // See http://dba.stackexchange.com/questions/2357/what-are-the-differences-between-stored-procedures-and-stored-functions
-  try
-    Results := GetResults('SELECT '+
-      QuoteIdent('p')+'.'+QuoteIdent('proname')+', '+
-      QuoteIdent('p')+'.'+QuoteIdent('proargtypes')+', '+
-      QuoteIdent('p')+'.'+QuoteIdent('prokind')+' '+
-      'FROM '+QuoteIdent('pg_catalog')+'.'+QuoteIdent('pg_namespace')+' AS '+QuoteIdent('n')+' '+
-      'JOIN '+QuoteIdent('pg_catalog')+'.'+QuoteIdent('pg_proc')+' AS '+QuoteIdent('p')+' ON '+QuoteIdent('p')+'.'+QuoteIdent('pronamespace')+' = '+QuoteIdent('n')+'.'+QuoteIdent('oid')+' '+
-      'WHERE '+QuoteIdent('n')+'.'+QuoteIdent('nspname')+'='+EscapeString(db)
-      );
-  except
-    on E:EDbError do;
-  end;
-  if Assigned(Results) then begin
-    while not Results.Eof do begin
-      obj := TDBObject.Create(Self);
-      Cache.Add(obj);
-      obj.Name := Results.Col('proname');
+      else if tp = 'm' then
+        obj.NodeType := lntView
+      else if tp = 'f' then
+        obj.NodeType := lntFunction
+      else if tp = 'p' then
+        obj.NodeType := lntProcedure;
       obj.ArgTypes := Results.Col('proargtypes');
-      obj.Database := db;
-      if Results.Col('prokind') = 'p' then
-        obj.NodeType := lntProcedure
-      else
-        obj.NodeType := lntFunction;
       Results.Next;
     end;
     FreeAndNil(Results);
