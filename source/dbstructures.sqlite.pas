@@ -422,6 +422,7 @@ begin
     qDisableForeignKeyChecks: Result := '';
     qEnableForeignKeyChecks: Result := '';
     qForeignKeyDrop: Result := 'DROP FOREIGN KEY %s';
+    qGetTableColumns: Result := 'SELECT * FROM pragma_table_xinfo(%s, %s)';
     else Result := inherited;
   end;
 end;

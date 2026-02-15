@@ -211,6 +211,24 @@ begin
     qDisableForeignKeyChecks: Result := '';
     qEnableForeignKeyChecks: Result := '';
     qForeignKeyDrop: Result := 'DROP FOREIGN KEY %s';
+    qGetTableColumns: Result := 'SELECT r.RDB$FIELD_NAME AS field_name,'+
+      '   r.RDB$DESCRIPTION AS field_description,'+
+      '   r.RDB$DEFAULT_VALUE AS field_default_value,'+
+      '   r.RDB$NULL_FLAG AS null_flag,'+
+      '   f.RDB$FIELD_LENGTH AS field_length,'+
+      '   f.RDB$FIELD_PRECISION AS field_precision,'+
+      '   f.RDB$FIELD_SCALE AS field_scale,'+
+      '   f.RDB$FIELD_TYPE AS field_type,'+
+      '   f.RDB$FIELD_SUB_TYPE AS field_subtype,'+
+      '   coll.RDB$COLLATION_NAME AS field_collation,'+
+      '   cset.RDB$CHARACTER_SET_NAME AS field_charset'+
+      ' FROM RDB$RELATION_FIELDS r'+
+      ' LEFT JOIN RDB$FIELDS f ON r.RDB$FIELD_SOURCE = f.RDB$FIELD_NAME'+
+      ' LEFT JOIN RDB$CHARACTER_SETS cset ON f.RDB$CHARACTER_SET_ID = cset.RDB$CHARACTER_SET_ID'+
+      ' LEFT JOIN RDB$COLLATIONS coll ON f.RDB$COLLATION_ID = coll.RDB$COLLATION_ID'+
+      '                              AND F.RDB$CHARACTER_SET_ID = COLL.RDB$CHARACTER_SET_ID'+
+      ' WHERE r.RDB$RELATION_NAME=%s'+
+      ' ORDER BY r.RDB$FIELD_POSITION';
   end;
 end;
 

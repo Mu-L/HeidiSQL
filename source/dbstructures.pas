@@ -46,13 +46,14 @@ type
     qFuncLength, qFuncCeil, qFuncLeft, qFuncNow, qFuncLastAutoIncNumber,
     qLockedTables, qDisableForeignKeyChecks, qEnableForeignKeyChecks,
     qOrderAsc, qOrderDesc,
-    qForeignKeyDrop);
+    qForeignKeyDrop, qGetTableColumns);
   TSqlProvider = class
     strict protected
       FNetType: TNetType;
       FServerVersion: Integer;
     public
       constructor Create(ANetType: TNetType);
+      function Has(AId: TQueryId): Boolean;
       function GetSql(AId: TQueryId): string; overload; virtual;
       function GetSql(AId: TQueryId; const Args: array of const): string; overload;
       property ServerVersion: Integer read FServerVersion write FServerVersion;
@@ -190,6 +191,11 @@ begin
   FServerVersion := 0;
 end;
 
+function TSqlProvider.Has(AId: TQueryId): Boolean;
+begin
+  Result := not GetSql(AId).IsEmpty;
+end;
+
 function TSqlProvider.GetSql(AId: TQueryId): string;
 begin
   // This provides default values for queries, basically MySQL syntax
@@ -257,6 +263,7 @@ begin
     qOrderAsc: Result := 'ASC';
     qOrderDesc: Result := 'DESC';
     qForeignKeyDrop: Result := 'DROP FOREIGN KEY %s';
+    qGetTableColumns: Result := '';
     else Result := '';
   end;
 end;

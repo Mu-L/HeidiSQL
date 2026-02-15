@@ -5803,106 +5803,13 @@ var
   Col: TTableColumn;
   dt, DefText, ExtraText, MaxLen, ColSQL: String;
 begin
-  // Generic: query table columns from IS.COLUMNS
+  // Generic: query table columns from IS.COLUMNS or query from provider
   Log(lcDebug, 'Getting fresh columns for '+Table.QuotedDbAndTableName);
   Result := TTableColumnList.Create(True);
 
-  if (FParameters.IsAnyPostgreSQL) and (ServerVersionInt >= 120000) then begin
-    // This uses pg_attribute.attgenerated, which only exists starting in PostgreSQL 12
-    // Todo: outsource such bigger SQL chunks into dbstructures units, together with the FSQLSpecifities array
-    ColSQL :=
-      'SELECT ' +
-      '    n.nspname AS table_schema, ' +
-      '    c.relname AS table_name, ' +
-      '    a.attname AS column_name, ' +
-      '    a.attnum  AS ordinal_position, ' +
-      '    pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type, ' +
-      // YES/NO like information_schema.is_nullable
-      '    CASE ' +
-      '        WHEN a.attnotnull THEN ''NO'' ' +
-      '        ELSE ''YES'' ' +
-      '    END AS is_nullable, ' +
-      // Character maximum length (in characters)
-      '    CASE ' +
-      '        WHEN (bt.typcategory = ''S'' OR (bt.oid IS NULL AND t.typcategory = ''S'')) ' +
-      '             AND a.atttypmod <> -1 ' +
-      '        THEN a.atttypmod - 4 ' +
-      '        ELSE NULL ' +
-      '    END AS character_maximum_length, ' +
-      // Numeric precision / scale (NULL for non-numeric)
-      '    CASE ' +
-      '        WHEN (bt.typcategory IN (''N'',''F'')) OR (bt.oid IS NULL AND t.typcategory IN (''N'',''F'')) ' +
-      '        THEN ' +
-      '            CASE ' +
-      '                WHEN a.atttypmod = -1 THEN NULL ' +
-      '                ELSE ((a.atttypmod - 4) >> 16)::integer ' +
-      '            END ' +
-      '    END AS numeric_precision, ' +
-      '    CASE ' +
-      '        WHEN (bt.typcategory IN (''N'',''F'')) OR (bt.oid IS NULL AND t.typcategory IN (''N'',''F'')) ' +
-      '        THEN ' +
-      '            CASE ' +
-      '                WHEN a.atttypmod = -1 THEN NULL ' +
-      '                ELSE ((a.atttypmod - 4) & 65535)::integer ' +
-      '            END ' +
-      '    END AS numeric_scale, ' +
-      // Datetime precision (for time/timestamp/interval)
-      '    CASE ' +
-      '        WHEN (bt.typcategory = ''D'' OR (bt.oid IS NULL AND t.typcategory = ''D'')) ' +
-      '             AND a.atttypmod <> -1 ' +
-      '        THEN a.atttypmod ' +
-      '        ELSE NULL ' +
-      '    END AS datetime_precision, ' +
-      // Character set name: PostgreSQL has one per DB; mimic information_schema
-      '    CASE ' +
-      '        WHEN (bt.typcategory = ''S'' OR (bt.oid IS NULL AND t.typcategory = ''S'')) ' +
-      '        THEN current_database() ' +
-      '        ELSE NULL ' +
-      '    END AS character_set_name, ' +
-      // Collation name for collatable columns
-      '    CASE ' +
-      '        WHEN (bt.typcategory = ''S'' OR (bt.oid IS NULL AND t.typcategory = ''S'')) ' +
-      '        THEN ' +
-      '            CASE ' +
-      '                WHEN a.attcollation <> t.typcollation ' +
-      '                THEN coll.collname ' +
-      '                ELSE NULL ' +
-      '            END ' +
-      '        ELSE NULL ' +
-      '    END AS collation_name, ' +
-      // Default expression for non-generated columns
-      '    CASE ' +
-      '        WHEN a.attgenerated = '''' AND a.atthasdef ' +
-      '        THEN pg_get_expr(ad.adbin, ad.adrelid) ' +
-      '        ELSE NULL ' +
-      '    END AS column_default, ' +
-      // Generation expression for generated columns
-      '    CASE ' +
-      '        WHEN a.attgenerated <> '''' AND a.atthasdef ' +
-      '        THEN pg_get_expr(ad.adbin, ad.adrelid) ' +
-      '        ELSE NULL ' +
-      '    END AS generation_expression, ' +
-      '    d.description AS column_comment ' +
-      'FROM pg_catalog.pg_class     AS c ' +
-      'JOIN pg_catalog.pg_namespace AS n  ON n.oid      = c.relnamespace ' +
-      'JOIN pg_catalog.pg_attribute AS a  ON a.attrelid = c.oid ' +
-      'JOIN pg_catalog.pg_type      AS t  ON t.oid      = a.atttypid ' +
-      'LEFT JOIN pg_catalog.pg_type AS bt ON bt.oid     = t.typbasetype ' +
-      'LEFT JOIN pg_catalog.pg_attrdef AS ad ' +
-      '       ON ad.adrelid = a.attrelid ' +
-      '      AND ad.adnum   = a.attnum ' +
-      'LEFT JOIN pg_catalog.pg_description AS d ' +
-      '       ON d.objoid   = a.attrelid ' +
-      '      AND d.objsubid = a.attnum ' +
-      'LEFT JOIN pg_catalog.pg_collation AS coll ' +
-      '       ON coll.oid   = a.attcollation ' +
-      'WHERE n.nspname = ' + EscapeString(Table.Schema) + ' ' +
-      '  AND a.attnum > 0 ' +
-      '  AND NOT a.attisdropped ' +
-      '  AND c.relname = ' + EscapeString(Table.Name) + ' ' +
-      'ORDER BY ordinal_position';
+  if FSqlProvider.Has(qGetTableColumns) then begin
+    ColSQL := FSqlProvider.GetSql(qGetTableColumns, [EscapeString(Table.Schema), EscapeString(Table.Name)]);
   end
-
   else begin
     TableIdx := InformationSchemaObjects.IndexOf('columns');
     if TableIdx = -1 then begin
@@ -6152,7 +6059,7 @@ begin
   // Todo: include database name
   // Todo: default values
   Result := TTableColumnList.Create(True);
-  ColQuery := GetResults('SELECT * FROM pragma_table_xinfo('+EscapeString(Table.Name)+', '+EscapeString(Table.Database)+')');
+  ColQuery := GetResults(FSqlProvider.GetSql(qGetTableColumns, [EscapeString(Table.Name), EscapeString(Table.Database)]));
   while not ColQuery.Eof do begin
     Col := TTableColumn.Create(Self);
     Result.Add(Col);
@@ -6182,24 +6089,7 @@ var
 begin
   // Todo
   Result := TTableColumnList.Create(True);
-  ColQuery := GetResults('SELECT r.RDB$FIELD_NAME AS field_name,'+
-    '   r.RDB$DESCRIPTION AS field_description,'+
-    '   r.RDB$DEFAULT_VALUE AS field_default_value,'+
-    '   r.RDB$NULL_FLAG AS null_flag,'+
-    '   f.RDB$FIELD_LENGTH AS field_length,'+
-    '   f.RDB$FIELD_PRECISION AS field_precision,'+
-    '   f.RDB$FIELD_SCALE AS field_scale,'+
-    '   f.RDB$FIELD_TYPE AS field_type,'+
-    '   f.RDB$FIELD_SUB_TYPE AS field_subtype,'+
-    '   coll.RDB$COLLATION_NAME AS field_collation,'+
-    '   cset.RDB$CHARACTER_SET_NAME AS field_charset'+
-    ' FROM RDB$RELATION_FIELDS r'+
-    ' LEFT JOIN RDB$FIELDS f ON r.RDB$FIELD_SOURCE = f.RDB$FIELD_NAME'+
-    ' LEFT JOIN RDB$CHARACTER_SETS cset ON f.RDB$CHARACTER_SET_ID = cset.RDB$CHARACTER_SET_ID'+
-    ' LEFT JOIN RDB$COLLATIONS coll ON f.RDB$COLLATION_ID = coll.RDB$COLLATION_ID'+
-    '                              AND F.RDB$CHARACTER_SET_ID = COLL.RDB$CHARACTER_SET_ID'+
-    ' WHERE r.RDB$RELATION_NAME='+EscapeString(Table.Name)+
-    ' ORDER BY r.RDB$FIELD_POSITION');
+  ColQuery := GetResults(FSqlProvider.GetSql(qGetTableColumns, [EscapeString(Table.Name)]));
   while not ColQuery.Eof do begin
     Col := TTableColumn.Create(Self);
     Result.Add(Col);
