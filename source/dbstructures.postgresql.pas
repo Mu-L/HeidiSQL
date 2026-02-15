@@ -36,6 +36,11 @@ type
       procedure AssignProcedures; override;
   end;
 
+  TPostgreSQLProvider = class(TSqlProvider)
+    public
+      function GetSql(AId: TQueryId): string; override;
+  end;
+
 const InvalidOid: POid = 0;
 
 var
@@ -570,6 +575,41 @@ begin
   AssignProc(@PQgetlength, 'PQgetlength');
   AssignProc(@PQgetisnull, 'PQgetisnull');
   AssignProc(@PQlibVersion, 'PQlibVersion');
+end;
+
+
+{ TPostgreSQLProvider }
+
+function TPostgreSQLProvider.GetSql(AId: TQueryId): string;
+begin
+  case AId of
+    qDatabaseDrop: Result := 'DROP SCHEMA %s';
+    qEmptyTable: Result := 'DELETE FROM ';
+    qRenameTable: Result := 'ALTER TABLE %s RENAME TO %s';
+    qRenameView: Result := 'ALTER VIEW %s RENAME TO %s';
+    qCurrentUserHost: Result := 'SELECT CURRENT_USER';
+    qLikeCompare: Result := '%s ILIKE %s';
+    qAddColumn: Result := 'ADD %s';
+    qChangeColumn: Result := 'ALTER COLUMN %s %s';
+    qRenameColumn: Result := 'RENAME COLUMN %s TO %s';
+    qForeignKeyEventAction: Result := 'RESTRICT,CASCADE,SET NULL,NO ACTION,SET DEFAULT';
+    qSessionVariables: Result := 'SHOW ALL';
+    qGlobalVariables: Result := 'SHOW ALL';
+    qISSchemaCol: Result := '%s_schema';
+    qUSEQuery: Result := 'SET search_path TO %s';
+    qKillQuery: Result := 'SELECT pg_cancel_backend(%d)';
+    qKillProcess: Result := 'SELECT pg_cancel_backend(%d)';
+    qFuncLength: Result := 'LENGTH';
+    qFuncCeil: Result := 'CEIL';
+    qFuncLeft: Result := 'SUBSTRING(%s, 1, %d)';
+    qFuncNow: Result := 'NOW()';
+    qFuncLastAutoIncNumber: Result := 'LASTVAL()';
+    qLockedTables: Result := '';
+    qDisableForeignKeyChecks: Result := '';
+    qEnableForeignKeyChecks: Result := '';
+    qForeignKeyDrop: Result := 'DROP CONSTRAINT %s';
+    else Result := inherited;
+  end;
 end;
 
 

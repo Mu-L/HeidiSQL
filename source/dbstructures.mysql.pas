@@ -4,7 +4,7 @@
 interface
 
 uses
-  System.Classes, System.SysUtils, dbstructures;
+  System.Classes, System.SysUtils, dbstructures, StrUtils;
 
 
 const
@@ -318,6 +318,13 @@ type
       constructor Create(DllFile, DefaultDll: String); override;
       function IsLibMariadb: Boolean;
   end;
+
+  TMySqlProvider = class(TSqlProvider)
+    public
+      function GetSql(AId: TQueryId): string; override;
+  end;
+
+
 var
   MySQLKeywords: TStringList;
   MySQLErrorCodes: TStringList;
@@ -3212,6 +3219,21 @@ begin
   AssignProc(@mysql_thread_init, 'mysql_thread_init');
   AssignProc(@mysql_thread_end, 'mysql_thread_end');
   AssignProc(@mysql_warning_count, 'mysql_warning_count');
+end;
+
+
+{ TMySqlProvider }
+
+function TMySqlProvider.GetSql(AId: TQueryId): string;
+begin
+  case AId of
+    qKillQuery: Result := IfThen(
+      (FNetType <> ntMySQL_RDS) and (FServerVersion >= 50000),
+      'KILL QUERY %d',
+      inherited
+      );
+    else Result := inherited;
+  end;
 end;
 
 

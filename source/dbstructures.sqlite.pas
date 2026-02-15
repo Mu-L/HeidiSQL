@@ -152,6 +152,11 @@ type
       constructor CreateWithMultipleCipherFunctions(DllFile, DefaultDll: String);
   end;
 
+  TSQLiteProvider = class(TSqlProvider)
+    public
+      function GetSql(AId: TQueryId): string; override;
+  end;
+
 var
 
   SQLiteDatatypes: Array[0..15] of TDBDatatype =
@@ -386,5 +391,40 @@ begin
     AssignProc(@sqlite3mc_config_cipher, 'sqlite3mc_config_cipher');
   end;
 end;
+
+
+{ TSQLiteProvider }
+
+function TSQLiteProvider.GetSql(AId: TQueryId): string;
+begin
+  case AId of
+    qDatabaseDrop: Result := 'DROP DATABASE %s';
+    qEmptyTable: Result := 'DELETE FROM ';
+    qRenameTable: Result := 'ALTER TABLE %s RENAME TO %s';
+    qRenameView: Result := 'ALTER TABLE %s RENAME TO %s';
+    qCurrentUserHost: Result := ''; // unsupported
+    qLikeCompare: Result := '%s LIKE %s';
+    qAddColumn: Result := 'ADD COLUMN %s';
+    qChangeColumn: Result := ''; // SQLite only supports renaming
+    qRenameColumn: Result := 'RENAME COLUMN %s TO %s';
+    qSessionVariables: Result := 'SELECT null, null'; // Todo: combine "PRAGMA pragma_list" + "PRAGMA a; PRAGMY b; ..."?
+    qGlobalVariables: Result := 'SHOW GLOBAL VARIABLES';
+    qISSchemaCol: Result := '%s_SCHEMA';
+    qUSEQuery: Result := '';
+    qKillQuery: Result := 'KILL %d';
+    qKillProcess: Result := 'KILL %d';
+    qFuncLength: Result := 'LENGTH';
+    qFuncCeil: Result := 'CEIL';
+    qFuncLeft: Result := 'SUBSTR(%s, 1, %d)';
+    qFuncNow: Result := 'DATETIME()';
+    qFuncLastAutoIncNumber: Result := 'LAST_INSERT_ID()';
+    qLockedTables: Result := '';
+    qDisableForeignKeyChecks: Result := '';
+    qEnableForeignKeyChecks: Result := '';
+    qForeignKeyDrop: Result := 'DROP FOREIGN KEY %s';
+    else Result := inherited;
+  end;
+end;
+
 
 end.

@@ -6,10 +6,57 @@
 interface
 
 uses
-  gnugettext, Vcl.Graphics, Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils;
+  gnugettext, Vcl.Graphics, Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils,
+  System.Generics.Collections, StrUtils;
 
 
 type
+
+  TNetType = (
+    ntMySQL_TCPIP,
+    ntMySQL_NamedPipe,
+    ntMySQL_SSHtunnel,
+    ntMSSQL_NamedPipe,
+    ntMSSQL_TCPIP,
+    ntMSSQL_SPX,
+    ntMSSQL_VINES,
+    ntMSSQL_RPC,
+    ntPgSQL_TCPIP,
+    ntPgSQL_SSHtunnel,
+    ntSQLite,
+    ntMySQL_ProxySQLAdmin,
+    ntInterbase_TCPIP,
+    ntInterbase_Local,
+    ntFirebird_TCPIP,
+    ntFirebird_Local,
+    ntMySQL_RDS,
+    ntSQLiteEncrypted
+    );
+  TNetTypeGroup = (ngMySQL, ngMSSQL, ngPgSQL, ngSQLite, ngInterbase);
+  TNetTypeLibs = TDictionary<TNetType, TStringList>;
+
+  // SQL query ids and provider
+  TQueryId = (qDatabaseTable, qDatabaseTableId, qDatabaseDrop,
+    qDbObjectsTable, qDbObjectsCreateCol, qDbObjectsUpdateCol, qDbObjectsTypeCol,
+    qEmptyTable, qRenameTable, qRenameView, qCurrentUserHost, qLikeCompare,
+    qAddColumn, qChangeColumn, qRenameColumn, qForeignKeyEventAction,
+    qGlobalStatus, qCommandsCounters, qSessionVariables, qGlobalVariables,
+    qISSchemaCol,
+    qUSEQuery, qKillQuery, qKillProcess,
+    qFuncLength, qFuncCeil, qFuncLeft, qFuncNow, qFuncLastAutoIncNumber,
+    qLockedTables, qDisableForeignKeyChecks, qEnableForeignKeyChecks,
+    qOrderAsc, qOrderDesc,
+    qForeignKeyDrop);
+  TSqlProvider = class
+    strict protected
+      FNetType: TNetType;
+      FServerVersion: Integer;
+    public
+      constructor Create(ANetType: TNetType);
+      function GetSql(AId: TQueryId): string; overload; virtual;
+      function GetSql(AId: TQueryId; const Args: array of const): string; overload;
+      property ServerVersion: Integer read FServerVersion write FServerVersion;
+  end;
 
   // Column types
   TDBDatatypeIndex = (dbdtTinyint, dbdtSmallint, dbdtMediumint, dbdtInt, dbdtUint, dbdtBigint, dbdtSerial, dbdtBigSerial,
@@ -133,6 +180,94 @@ var
 implementation
 
 uses apphelpers;
+
+
+{ TSqlProvider }
+
+constructor TSqlProvider.Create(ANetType: TNetType);
+begin
+  FNetType := ANetType;
+  FServerVersion := 0;
+end;
+
+function TSqlProvider.GetSql(AId: TQueryId): string;
+begin
+  // This provides default values for queries, basically MySQL syntax
+  case AId of
+    // qDatabaseTable: MSSQL only
+    // qDatabaseTableId: MSSQL only
+    qDatabaseDrop: Result := 'DROP DATABASE %s';
+    // qDbObjectsTable: MSSQL only
+    // qDbObjectsCreateCol: MSSQL only
+    // qDbObjectsUpdateCol: MSSQL only
+    // qDbObjectsTypeCol: MSSQL only
+    qEmptyTable: Result := 'TRUNCATE ';
+    qRenameTable: Result := 'RENAME TABLE %s TO %s';
+    qRenameView: Result := 'RENAME TABLE %s TO %s';
+    qCurrentUserHost: Result := 'SELECT CURRENT_USER()';
+    qLikeCompare: Result := '%s LIKE %s';
+    qAddColumn: Result := 'ADD COLUMN %s';
+    qChangeColumn: Result := 'CHANGE COLUMN %s %s';
+    // qRenameColumn: PostgreSQL only
+    qForeignKeyEventAction: Result := 'RESTRICT,CASCADE,SET NULL,NO ACTION';
+    qGlobalStatus: Result := IfThen(
+      FNetType = ntMySQL_ProxySQLAdmin,
+      'SELECT * FROM stats_mysql_global',
+      'SHOW /*!50002 GLOBAL */ STATUS'
+      );
+    qCommandsCounters: Result := IfThen(
+      FNetType = ntMySQL_ProxySQLAdmin,
+      'SELECT * FROM stats_mysql_commands_counters',
+      'SHOW /*!50002 GLOBAL */ STATUS LIKE ''Com\_%'''
+      );
+    qSessionVariables: Result := 'SHOW VARIABLES';
+    qGlobalVariables: Result := 'SHOW GLOBAL VARIABLES';
+    qISSchemaCol: Result := '%s_SCHEMA';
+    qUSEQuery: Result := 'USE %s';
+    qKillQuery: Result := IfThen(
+      FNetType = ntMySQL_RDS,
+      'CALL mysql.rds_kill_query(%d)',
+      'KILL %d'
+      );
+    qKillProcess: Result := IfThen(
+      FNetType = ntMySQL_RDS,
+      'CALL mysql.rds_kill(%d)',
+      'KILL %d'
+      );
+    qFuncLength: Result := 'LENGTH';
+    qFuncCeil: Result := 'CEIL';
+    qFuncLeft: Result := IfThen(
+      FNetType = ntMySQL_ProxySQLAdmin,
+      'SUBSTR(%s, 1, %d)',
+      'LEFT(%s, %d)'
+      );
+    qFuncNow: Result := IfThen(
+      FNetType = ntMySQL_ProxySQLAdmin,
+      'CURRENT_TIMESTAMP',
+      'NOW()'
+      );
+    qFuncLastAutoIncNumber: Result := 'LAST_INSERT_ID()';
+    qLockedTables: Result := IfThen(
+      (FNetType <> ntMySQL_ProxySQLAdmin) and (FServerVersion >= 50124),
+      'SHOW OPEN TABLES FROM %s WHERE in_use!=0',
+      ''
+      );
+    qDisableForeignKeyChecks: Result := 'SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0';
+    qEnableForeignKeyChecks: Result := 'SET FOREIGN_KEY_CHECKS=IFNULL(@OLD_FOREIGN_KEY_CHECKS, 1)';
+    qOrderAsc: Result := 'ASC';
+    qOrderDesc: Result := 'DESC';
+    qForeignKeyDrop: Result := 'DROP FOREIGN KEY %s';
+    else Result := '';
+  end;
+end;
+
+function TSqlProvider.GetSql(AId: TQueryId; const Args: array of const): string;
+begin
+  Result := GetSql(AId);
+  if not Result.IsEmpty then
+    Result := Format(Result, Args);
+end;
+
 
 
 

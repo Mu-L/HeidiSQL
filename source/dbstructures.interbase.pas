@@ -4,7 +4,13 @@ unit dbstructures.interbase;
 interface
 
 uses
-  dbstructures;
+  dbstructures, StrUtils;
+
+type
+  TInterbaseProvider = class(TSqlProvider)
+    public
+      function GetSql(AId: TQueryId): string; override;
+  end;
 
 var
 
@@ -170,5 +176,43 @@ var
 
 
 implementation
+
+
+{ TInterbaseProvider }
+
+function TInterbaseProvider.GetSql(AId: TQueryId): string;
+begin
+  case AId of
+    qDatabaseDrop: Result := 'DROP DATABASE %s';
+    qEmptyTable: Result := 'TRUNCATE ';
+    qRenameTable: Result := 'RENAME TABLE %s TO %s';
+    qRenameView: Result := 'RENAME TABLE %s TO %s';
+    qCurrentUserHost: Result := IfThen(
+      FNetType in [ntInterbase_TCPIP, ntInterbase_Local],
+      'select user from rdb$database',
+      'select current_user || ''@'' || mon$attachments.mon$remote_host from mon$attachments where mon$attachments.mon$attachment_id = current_connection'
+      );
+    qLikeCompare: Result := '%s LIKE %s';
+    qAddColumn: Result := 'ADD COLUMN %s';
+    qChangeColumn: Result := 'CHANGE COLUMN %s %s';
+    qRenameColumn: Result := '';
+    qSessionVariables: Result := 'SHOW VARIABLES';
+    qGlobalVariables: Result := 'SHOW GLOBAL VARIABLES';
+    qISSchemaCol: Result := '%s_SCHEMA';
+    qUSEQuery: Result := '';
+    qKillQuery: Result := 'KILL %d';
+    qKillProcess: Result := 'KILL %d';
+    qFuncLength: Result := 'LENGTH';
+    qFuncCeil: Result := 'CEIL';
+    qFuncLeft: Result := 'SUBSTR(%s, 1, %d)';
+    qFuncNow: Result := ' cast(''now'' as timestamp) from rdb$database';
+    qFuncLastAutoIncNumber: Result := 'LAST_INSERT_ID()';
+    qLockedTables: Result := '';
+    qDisableForeignKeyChecks: Result := '';
+    qEnableForeignKeyChecks: Result := '';
+    qForeignKeyDrop: Result := 'DROP FOREIGN KEY %s';
+  end;
+end;
+
 
 end.

@@ -13,7 +13,7 @@ uses
   VirtualTrees, Vcl.Menus, Vcl.Graphics, System.Generics.Collections, Winapi.ActiveX, extra_controls, Winapi.Messages,
   dbconnection, gnugettext, SynRegExpr, System.Types, Vcl.GraphUtil, Data.Win.ADODB, System.StrUtils,
   System.Math, System.Actions, System.IOUtils, Vcl.ActnList, Vcl.StdActns, VirtualTrees.BaseTree, VirtualTrees.Types, VirtualTrees.EditLink,
-  VirtualTrees.BaseAncestorVCL, VirtualTrees.AncestorVCL;
+  VirtualTrees.BaseAncestorVCL, VirtualTrees.AncestorVCL, dbstructures;
 
 type
   Tconnform = class(TExtForm)

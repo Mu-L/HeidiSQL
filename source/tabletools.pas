@@ -1296,7 +1296,7 @@ begin
       SQL := 'SELECT '+
         esc(DBObj.Database)+' AS '+DBObj.Connection.QuoteIdent('Database')+', '+
         esc(DBObj.Name)+' AS '+DBObj.Connection.QuoteIdent('Table')+', '+
-        DBObj.Connection.GetSQLSpecifity(spFuncCeil)+'(('+DBObj.Connection.GetSQLSpecifity(spFuncLength)+'('+RoutineDefinitionColumn+') - '+DBObj.Connection.GetSQLSpecifity(spFuncLength)+'(REPLACE('+RoutineDefinitionColumn+', '+esc(FindText)+', '+esc('')+'))) / '+DBObj.Connection.GetSQLSpecifity(spFuncLength)+'('+esc(FindText)+')) AS '+DBObj.Connection.QuoteIdent('Found rows')+', '+
+        DBObj.Connection.SqlProvider.GetSql(qFuncCeil)+'(('+DBObj.Connection.SqlProvider.GetSql(qFuncLength)+'('+RoutineDefinitionColumn+') - '+DBObj.Connection.SqlProvider.GetSql(qFuncLength)+'(REPLACE('+RoutineDefinitionColumn+', '+esc(FindText)+', '+esc('')+'))) / '+DBObj.Connection.SqlProvider.GetSql(qFuncLength)+'('+esc(FindText)+')) AS '+DBObj.Connection.QuoteIdent('Found rows')+', '+
         '0 AS '+DBObj.Connection.QuoteIdent('Relevance')+
         'FROM '+DBObj.Connection.QuoteIdent(DBObj.Connection.InfSch)+'.'+DBObj.Connection.QuoteIdent('routines')+' '+
         'WHERE '+DBObj.Connection.QuoteIdent(RoutineSchemaColumn)+'='+esc(DBObj.Database)+' AND '+DBObj.Connection.QuoteIdent('routine_name')+'='+esc(DBObj.Name);
@@ -1928,13 +1928,13 @@ begin
       end else
         Struc := 'CREATE DATABASE IF NOT EXISTS '+Quoter.QuoteIdent(FinalDbName);
       Output(Struc, True, NeedsDBStructure, False, False, NeedsDBStructure);
-      Output(Quoter.GetSQLSpecifity(spUSEQuery, [Quoter.QuoteIdent(FinalDbName)]), True, NeedsDBStructure, False, False, NeedsDBStructure);
+      Output(Quoter.SqlProvider.GetSql(qUSEQuery, [Quoter.QuoteIdent(FinalDbName)]), True, NeedsDBStructure, False, False, NeedsDBStructure);
       Output(CRLF, False, NeedsDBStructure, False, False, NeedsDBStructure);
     end;
   end;
   if ToServer and (not chkExportDatabasesCreate.Checked) then begin
     // Export to server without "CREATE/USE dbname" and "Same dbs as on source server" - needs a "USE dbname"
-    Output(Quoter.GetSQLSpecifity(spUSEQuery, [Quoter.QuoteIdent(FinalDbName)]), True, False, False, False, NeedsDBStructure);
+    Output(Quoter.SqlProvider.GetSql(qUSEQuery, [Quoter.QuoteIdent(FinalDbName)]), True, False, False, False, NeedsDBStructure);
   end;
 
   // Table structure

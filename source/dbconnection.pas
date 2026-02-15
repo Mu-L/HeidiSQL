@@ -295,29 +295,6 @@ type
 
   { TConnectionParameters and friends }
 
-  TNetType = (
-    ntMySQL_TCPIP,
-    ntMySQL_NamedPipe,
-    ntMySQL_SSHtunnel,
-    ntMSSQL_NamedPipe,
-    ntMSSQL_TCPIP,
-    ntMSSQL_SPX,
-    ntMSSQL_VINES,
-    ntMSSQL_RPC,
-    ntPgSQL_TCPIP,
-    ntPgSQL_SSHtunnel,
-    ntSQLite,
-    ntMySQL_ProxySQLAdmin,
-    ntInterbase_TCPIP,
-    ntInterbase_Local,
-    ntFirebird_TCPIP,
-    ntFirebird_Local,
-    ntMySQL_RDS,
-    ntSQLiteEncrypted
-    );
-  TNetTypeGroup = (ngMySQL, ngMSSQL, ngPgSQL, ngSQLite, ngInterbase);
-  TNetTypeLibs = TDictionary<TNetType, TStringList>;
-
   TConnectionParameters = class(TObject)
     strict private
       FDeleteAfterUse: Boolean;
@@ -440,17 +417,6 @@ type
   TDBLogEvent = procedure(Msg: String; Category: TDBLogCategory=lcInfo; Connection: TDBConnection=nil) of object;
   TDBEvent = procedure(Connection: TDBConnection; Database: String) of object;
   TDBDataTypeArray = Array of TDBDataType;
-  TSQLSpecifityId = (spDatabaseTable, spDatabaseTableId, spDatabaseDrop,
-    spDbObjectsTable, spDbObjectsCreateCol, spDbObjectsUpdateCol, spDbObjectsTypeCol,
-    spEmptyTable, spRenameTable, spRenameView, spCurrentUserHost, spLikeCompare,
-    spAddColumn, spChangeColumn, spRenameColumn, spForeignKeyEventAction,
-    spGlobalStatus, spCommandsCounters, spSessionVariables, spGlobalVariables,
-    spISSchemaCol,
-    spUSEQuery, spKillQuery, spKillProcess,
-    spFuncLength, spFuncCeil, spFuncLeft, spFuncNow, spFuncLastAutoIncNumber,
-    spLockedTables, spDisableForeignKeyChecks, spEnableForeignKeyChecks,
-    spOrderAsc, spOrderDesc,
-    spForeignKeyDrop);
   TFeatureOrRequirement = (frSrid, frTimezoneVar, frTemporalTypesFraction, frKillQuery,
     frLockedTables, frShowCreateTrigger, frShowWarnings, frShowCollation, frShowCollationExtended,
     frShowCharset, frIntegerDisplayWidth, frShowFunctionStatus, frShowProcedureStatus,
@@ -502,7 +468,7 @@ type
       FQuoteChars: String;
       FDatatypes: TDBDataTypeArray;
       FThreadID: Int64;
-      FSQLSpecifities: Array[TSQLSpecifityId] of String;
+      FSqlProvider: TSqlProvider;
       FKeepAliveTimer: TTimer;
       FFavorites: TStringList;
       FPrefetchResults: TDBQueryList;
@@ -579,8 +545,6 @@ type
       function GetSessionVariables(Refresh: Boolean): TDBQuery;
       function GetSessionVariable(VarName: String; DefaultValue: String=''; Refresh: Boolean=False): String;
       function MaxAllowedPacket: Int64; virtual;
-      function GetSQLSpecifity(Specifity: TSQLSpecifityId): String; overload;
-      function GetSQLSpecifity(Specifity: TSQLSpecifityId; const Args: array of const): String; overload;
       function GetDateTimeValue(Input: String; Datatype: TDBDatatypeIndex): String;
       procedure ClearDbObjects(db: String);
       procedure ClearAllDbObjects;
@@ -646,6 +610,7 @@ type
       function IsNumeric(Text: String): Boolean;
       function IsHex(Text: String): Boolean;
       function Has(Item: TFeatureOrRequirement): Boolean;
+      property SqlProvider: TSqlProvider read FSqlProvider;
     published
       property Active: Boolean read FActive write SetActive default False;
       property Database: String read FDatabase write SetDatabase;
@@ -2684,7 +2649,7 @@ begin
       Log(lcInfo, _('Characterset')+': '+CharacterSet);
       FConnectionStarted := GetTickCount div 1000;
       FServerUptime := -1;
-      Status := GetResults(GetSQLSpecifity(spGlobalStatus));
+      Status := GetResults(FSqlProvider.GetSql(qGlobalStatus));
       while not Status.Eof do begin
         StatusName := LowerCase(Status.Col(0));
         if (StatusName = 'uptime') or (StatusName = 'proxysql_uptime') then
@@ -2693,7 +2658,7 @@ begin
           FIsSSL := Status.Col(1) <> '';
         Status.Next;
       end;
-      FServerDateTimeOnStartup := GetVar('SELECT ' + GetSQLSpecifity(spFuncNow));
+      FServerDateTimeOnStartup := GetVar('SELECT ' + FSqlProvider.GetSql(qFuncNow));
       FServerOS := GetSessionVariable('version_compile_os');
       FRealHostname := GetSessionVariable('hostname');
       FCaseSensitivity := MakeInt(GetSessionVariable('lower_case_table_names', IntToStr(FCaseSensitivity)));
@@ -2821,7 +2786,7 @@ begin
       except
         FServerUptime := -1;
       end;
-      FServerDateTimeOnStartup := GetVar('SELECT ' + GetSQLSpecifity(spFuncNow));
+      FServerDateTimeOnStartup := GetVar('SELECT ' + FSqlProvider.GetSql(qFuncNow));
       // Microsoft SQL Server 2008 R2 (RTM) - 10.50.1600.1 (Intel X86)
       // Apr  2 2010 15:53:02
       // Copyright (c) Microsoft Corporation
@@ -2971,7 +2936,7 @@ begin
       raise EDbError.Create(Error, LastErrorCode, ErrorHint);
     end;
     FActive := True;
-    FServerDateTimeOnStartup := GetVar('SELECT ' + GetSQLSpecifity(spFuncNow));
+    FServerDateTimeOnStartup := GetVar('SELECT ' + FSqlProvider.GetSql(qFuncNow));
     FServerVersionUntouched := GetVar('SELECT VERSION()');
     FConnectionStarted := GetTickCount div 1000;
     Query('SET statement_timeout TO '+IntToStr(Parameters.QueryTimeout*1000));
@@ -3098,7 +3063,7 @@ begin
         Log(lcError, 'Could not enable load_extension()');
       end;
 
-      FServerDateTimeOnStartup := GetVar('SELECT ' + GetSQLSpecifity(spFuncNow));
+      FServerDateTimeOnStartup := GetVar('SELECT ' + FSqlProvider.GetSql(qFuncNow));
       FServerVersionUntouched := GetVar('SELECT sqlite_version()');
       FConnectionStarted := GetTickCount div 1000;
       FServerUptime := -1;
@@ -3205,7 +3170,7 @@ begin
       FActive := True;
       //! Query('PRAGMA busy_timeout='+(Parameters.QueryTimeout*1000).ToString);
 
-      FServerDateTimeOnStartup := GetVar('SELECT ' + GetSQLSpecifity(spFuncNow));
+      FServerDateTimeOnStartup := GetVar('SELECT ' + FSqlProvider.GetSql(qFuncNow));
 
       if Parameters.IsInterbase then
         FServerVersionUntouched := ''
@@ -3300,160 +3265,20 @@ begin
     end;
   end;
 
-  FSQLSpecifities[spOrderAsc] := 'ASC';
-  FSQLSpecifities[spOrderDesc] := 'DESC';
-  FSQLSpecifities[spForeignKeyEventAction] := 'RESTRICT,CASCADE,SET NULL,NO ACTION';
-
-  case Parameters.NetTypeGroup of
-    ngMySQL: begin
-      FSQLSpecifities[spDatabaseDrop] := 'DROP DATABASE %s';
-      FSQLSpecifities[spEmptyTable] := 'TRUNCATE ';
-      FSQLSpecifities[spRenameTable] := 'RENAME TABLE %s TO %s';
-      FSQLSpecifities[spRenameView] := FSQLSpecifities[spRenameTable];
-      FSQLSpecifities[spCurrentUserHost] := 'SELECT CURRENT_USER()';
-      FSQLSpecifities[spLikeCompare] := '%s LIKE %s';
-      FSQLSpecifities[spAddColumn] := 'ADD COLUMN %s';
-      FSQLSpecifities[spChangeColumn] := 'CHANGE COLUMN %s %s';
-      FSQLSpecifities[spGlobalStatus] := IfThen(
-        Parameters.IsProxySQLAdmin,
-        'SELECT * FROM stats_mysql_global',
-        'SHOW /*!50002 GLOBAL */ STATUS'
-        );
-      FSQLSpecifities[spCommandsCounters] := IfThen(
-        Parameters.IsProxySQLAdmin,
-        'SELECT * FROM stats_mysql_commands_counters',
-        'SHOW /*!50002 GLOBAL */ STATUS LIKE ''Com\_%'''
-        );
-      FSQLSpecifities[spSessionVariables] := 'SHOW VARIABLES';
-      FSQLSpecifities[spGlobalVariables] := 'SHOW GLOBAL VARIABLES';
-      FSQLSpecifities[spISSchemaCol] := '%s_SCHEMA';
-      FSQLSpecifities[spUSEQuery] := 'USE %s';
-      if Parameters.NetType = ntMySQL_RDS then begin
-        FSQLSpecifities[spKillQuery] := 'CALL mysql.rds_kill_query(%d)';
-        FSQLSpecifities[spKillProcess] := 'CALL mysql.rds_kill(%d)'
-      end
-      else begin
-        FSQLSpecifities[spKillQuery] := 'KILL %d'; // may be overwritten in DoAfterConnect
-        FSQLSpecifities[spKillProcess] := 'KILL %d';
-      end;
-      FSQLSpecifities[spFuncLength] := 'LENGTH';
-      FSQLSpecifities[spFuncCeil] := 'CEIL';
-      FSQLSpecifities[spFuncLeft] := IfThen(Parameters.IsProxySQLAdmin, 'SUBSTR(%s, 1, %d)', 'LEFT(%s, %d)');
-      FSQLSpecifities[spFuncNow] := IfThen(Parameters.IsProxySQLAdmin, 'CURRENT_TIMESTAMP', 'NOW()');
-      FSQLSpecifities[spFuncLastAutoIncNumber] := 'LAST_INSERT_ID()';
-      FSQLSpecifities[spLockedTables] := '';
-      FSQLSpecifities[spDisableForeignKeyChecks] := 'SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0';
-      FSQLSpecifities[spEnableForeignKeyChecks] := 'SET FOREIGN_KEY_CHECKS=IFNULL(@OLD_FOREIGN_KEY_CHECKS, 1)';
-      FSQLSpecifities[spForeignKeyDrop] := 'DROP FOREIGN KEY %s';
-    end;
-    ngMSSQL: begin
-      FSQLSpecifities[spDatabaseDrop] := 'DROP DATABASE %s';
-      FSQLSpecifities[spEmptyTable] := 'DELETE FROM ';
-      FSQLSpecifities[spRenameTable] := 'EXEC sp_rename %s, %s';
-      FSQLSpecifities[spRenameView] := FSQLSpecifities[spRenameTable];
-      FSQLSpecifities[spCurrentUserHost] := 'SELECT SYSTEM_USER';
-      FSQLSpecifities[spLikeCompare] := '%s LIKE %s';
-      FSQLSpecifities[spAddColumn] := 'ADD %s';
-      FSQLSpecifities[spChangeColumn] := 'ALTER COLUMN %s %s';
-      FSQLSpecifities[spSessionVariables] := 'SELECT '+QuoteIdent('comment')+', '+QuoteIdent('value')+' FROM '+QuoteIdent('master')+'.'+QuoteIdent('dbo')+'.'+QuoteIdent('syscurconfigs')+' ORDER BY '+QuoteIdent('comment');
-      FSQLSpecifities[spGlobalVariables] := FSQLSpecifities[spSessionVariables];
-      FSQLSpecifities[spISSchemaCol] := '%s_CATALOG';
-      FSQLSpecifities[spUSEQuery] := 'USE %s';
-      FSQLSpecifities[spKillQuery] := 'KILL %d';
-      FSQLSpecifities[spKillProcess] := 'KILL %d';
-      FSQLSpecifities[spFuncLength] := 'LEN';
-      FSQLSpecifities[spFuncCeil] := 'CEILING';
-      FSQLSpecifities[spFuncLeft] := 'LEFT(%s, %d)';
-      FSQLSpecifities[spFuncNow] := 'GETDATE()';
-      FSQLSpecifities[spFuncLastAutoIncNumber] := 'LAST_INSERT_ID()';
-      FSQLSpecifities[spLockedTables] := '';
-      FSQLSpecifities[spDisableForeignKeyChecks] := '';
-      FSQLSpecifities[spEnableForeignKeyChecks] := '';
-      FSQLSpecifities[spForeignKeyDrop] := 'DROP FOREIGN KEY %s';
-    end;
-    ngPgSQL: begin
-      FSQLSpecifities[spDatabaseDrop] := 'DROP SCHEMA %s';
-      FSQLSpecifities[spEmptyTable] := 'DELETE FROM ';
-      FSQLSpecifities[spRenameTable] := 'ALTER TABLE %s RENAME TO %s';
-      FSQLSpecifities[spRenameView] := 'ALTER VIEW %s RENAME TO %s';
-      FSQLSpecifities[spCurrentUserHost] := 'SELECT CURRENT_USER';
-      FSQLSpecifities[spLikeCompare] := '%s ILIKE %s';
-      FSQLSpecifities[spAddColumn] := 'ADD %s';
-      FSQLSpecifities[spChangeColumn] := 'ALTER COLUMN %s %s';
-      FSQLSpecifities[spRenameColumn] := 'RENAME COLUMN %s TO %s';
-      FSQLSpecifities[spForeignKeyEventAction] := 'RESTRICT,CASCADE,SET NULL,NO ACTION,SET DEFAULT';
-      FSQLSpecifities[spSessionVariables] := 'SHOW ALL';
-      FSQLSpecifities[spGlobalVariables] := FSQLSpecifities[spSessionVariables];
-      FSQLSpecifities[spISSchemaCol] := '%s_schema';
-      FSQLSpecifities[spUSEQuery] := 'SET search_path TO %s';
-      FSQLSpecifities[spKillQuery] := 'SELECT pg_cancel_backend(%d)';
-      FSQLSpecifities[spKillProcess] := 'SELECT pg_cancel_backend(%d)';
-      FSQLSpecifities[spFuncLength] := 'LENGTH';
-      FSQLSpecifities[spFuncCeil] := 'CEIL';
-      FSQLSpecifities[spFuncLeft] := 'SUBSTRING(%s, 1, %d)';
-      FSQLSpecifities[spFuncNow] := 'NOW()';
-      FSQLSpecifities[spFuncLastAutoIncNumber] := 'LASTVAL()';
-      FSQLSpecifities[spLockedTables] := '';
-      FSQLSpecifities[spDisableForeignKeyChecks] := '';
-      FSQLSpecifities[spEnableForeignKeyChecks] := '';
-      FSQLSpecifities[spForeignKeyDrop] := 'DROP CONSTRAINT %s';
-    end;
-    ngSQLite: begin
-      FSQLSpecifities[spDatabaseDrop] := 'DROP DATABASE %s';
-      FSQLSpecifities[spEmptyTable] := 'DELETE FROM ';
-      FSQLSpecifities[spRenameTable] := 'ALTER TABLE %s RENAME TO %s';
-      FSQLSpecifities[spRenameView] := FSQLSpecifities[spRenameTable];
-      FSQLSpecifities[spCurrentUserHost] := ''; // unsupported
-      FSQLSpecifities[spLikeCompare] := '%s LIKE %s';
-      FSQLSpecifities[spAddColumn] := 'ADD COLUMN %s';
-      FSQLSpecifities[spChangeColumn] := ''; // SQLite only supports renaming
-      FSQLSpecifities[spRenameColumn] := 'RENAME COLUMN %s TO %s';
-      FSQLSpecifities[spSessionVariables] := 'SELECT null, null'; // Todo: combine "PRAGMA pragma_list" + "PRAGMA a; PRAGMY b; ..."?
-      FSQLSpecifities[spGlobalVariables] := 'SHOW GLOBAL VARIABLES';
-      FSQLSpecifities[spISSchemaCol] := '%s_SCHEMA';
-      FSQLSpecifities[spUSEQuery] := '';
-      FSQLSpecifities[spKillQuery] := 'KILL %d';
-      FSQLSpecifities[spKillProcess] := 'KILL %d';
-      FSQLSpecifities[spFuncLength] := 'LENGTH';
-      FSQLSpecifities[spFuncCeil] := 'CEIL';
-      FSQLSpecifities[spFuncLeft] := 'SUBSTR(%s, 1, %d)';
-      FSQLSpecifities[spFuncNow] := 'DATETIME()';
-      FSQLSpecifities[spFuncLastAutoIncNumber] := 'LAST_INSERT_ID()';
-      FSQLSpecifities[spLockedTables] := '';
-      FSQLSpecifities[spDisableForeignKeyChecks] := '';
-      FSQLSpecifities[spEnableForeignKeyChecks] := '';
-      FSQLSpecifities[spForeignKeyDrop] := 'DROP FOREIGN KEY %s';
-    end;
-    ngInterbase: begin
-      FSQLSpecifities[spDatabaseDrop] := 'DROP DATABASE %s';
-      FSQLSpecifities[spEmptyTable] := 'TRUNCATE ';
-      FSQLSpecifities[spRenameTable] := 'RENAME TABLE %s TO %s';
-      FSQLSpecifities[spRenameView] := FSQLSpecifities[spRenameTable];
-      if Self.Parameters.LibraryOrProvider = 'IB' then
-        FSQLSpecifities[spCurrentUserHost] := 'select user from rdb$database'
-      else
-        FSQLSpecifities[spCurrentUserHost] := 'select current_user || ''@'' || mon$attachments.mon$remote_host from mon$attachments where mon$attachments.mon$attachment_id = current_connection';
-      FSQLSpecifities[spLikeCompare] := '%s LIKE %s';
-      FSQLSpecifities[spAddColumn] := 'ADD COLUMN %s';
-      FSQLSpecifities[spChangeColumn] := 'CHANGE COLUMN %s %s';
-      FSQLSpecifities[spRenameColumn] := '';
-      FSQLSpecifities[spSessionVariables] := 'SHOW VARIABLES';
-      FSQLSpecifities[spGlobalVariables] := 'SHOW GLOBAL VARIABLES';
-      FSQLSpecifities[spISSchemaCol] := '%s_SCHEMA';
-      FSQLSpecifities[spUSEQuery] := '';
-      FSQLSpecifities[spKillQuery] := 'KILL %d';
-      FSQLSpecifities[spKillProcess] := 'KILL %d';
-      FSQLSpecifities[spFuncLength] := 'LENGTH';
-      FSQLSpecifities[spFuncCeil] := 'CEIL';
-      FSQLSpecifities[spFuncLeft] := 'SUBSTR(%s, 1, %d)';
-      FSQLSpecifities[spFuncNow] := ' cast(''now'' as timestamp) from rdb$database';
-      FSQLSpecifities[spFuncLastAutoIncNumber] := 'LAST_INSERT_ID()';
-      FSQLSpecifities[spLockedTables] := '';
-      FSQLSpecifities[spDisableForeignKeyChecks] := '';
-      FSQLSpecifities[spEnableForeignKeyChecks] := '';
-      FSQLSpecifities[spForeignKeyDrop] := 'DROP FOREIGN KEY %s';
-    end;
-
+  // Create SQL provider
+  case FParameters.NetTypeGroup of
+    ngMySQL:
+      FSqlProvider := TMySqlProvider.Create(FParameters.NetType);
+    ngMSSQL:
+      FSqlProvider := TMsSqlProvider.Create(FParameters.NetType);
+    ngPgSQL:
+      FSqlProvider := TPostgreSQLProvider.Create(FParameters.NetType);
+    ngSQLite:
+      FSqlProvider := TSQLiteProvider.Create(FParameters.NetType);
+    ngInterbase:
+      FSqlProvider := TInterbaseProvider.Create(FParameters.NetType);
+    else
+      raise Exception.CreateFmt(_(MsgUnhandledNetType), [Integer(FParameters.NetType)]);
   end;
 
 end;
@@ -3555,6 +3380,7 @@ var
   SQLFunctionsFileOrder: String;
   MajorMinorVer, MajorVer: String;
 begin
+  FSqlProvider.ServerVersion := ServerVersionInt;
   AppSettings.SessionPath := FParameters.SessionPath;
   AppSettings.WriteString(asServerVersionFull, FServerVersionUntouched);
   FParameters.ServerVersion := FServerVersionUntouched;
@@ -3625,10 +3451,6 @@ begin
     end;
   end;
 
-  if Has(frKillQuery) then begin
-    FSQLSpecifities[spKillQuery] := 'KILL QUERY %d';
-  end;
-
   // List of IS tables
   try
     ObjNames := GetCol('SHOW TABLES FROM '+QuoteIdent(FInfSch));
@@ -3636,34 +3458,12 @@ begin
     ObjNames.Free;
   except // silently fail if IS does not exist, on super old servers
   end;
-
-  if Has(frLockedTables) then
-    FSQLSpecifities[spLockedTables] := 'SHOW OPEN TABLES FROM %s WHERE '+QuoteIdent('in_use')+'!=0';
 end;
 
 
 procedure TAdoDBConnection.DoAfterConnect;
 begin
   inherited;
-  // See http://sqlserverbuilds.blogspot.de/
-  case ServerVersionInt of
-    0..899: begin
-      FSQLSpecifities[spDatabaseTable] := QuoteIdent('master')+'..'+QuoteIdent('sysdatabases');
-      FSQLSpecifities[spDatabaseTableId] := QuoteIdent('dbid');
-      FSQLSpecifities[spDbObjectsTable] := '..'+QuoteIdent('sysobjects');
-      FSQLSpecifities[spDbObjectsCreateCol] := 'crdate';
-      FSQLSpecifities[spDbObjectsUpdateCol] := '';
-      FSQLSpecifities[spDbObjectsTypeCol] := 'xtype';
-    end;
-    else begin
-      FSQLSpecifities[spDatabaseTable] := QuoteIdent('sys')+'.'+QuoteIdent('databases');
-      FSQLSpecifities[spDatabaseTableId] := QuoteIdent('database_id');
-      FSQLSpecifities[spDbObjectsTable] := '.'+QuoteIdent('sys')+'.'+QuoteIdent('objects');
-      FSQLSpecifities[spDbObjectsCreateCol] := 'create_date';
-      FSQLSpecifities[spDbObjectsUpdateCol] := 'modify_date';
-      FSQLSpecifities[spDbObjectsTypeCol] := 'type';
-    end;
-  end;
   // List of known IS tables
   FInformationSchemaObjects.CommaText := 'CHECK_CONSTRAINTS,'+
     'COLUMN_DOMAIN_USAGE,'+
@@ -4570,9 +4370,9 @@ begin
           s := s + ', ' + EscapeString('public');
       end else
         s := QuoteIdent(Value);
-      UseQuery := GetSQLSpecifity(spUSEQuery);
+      UseQuery := FSqlProvider.GetSql(qUSEQuery);
       if not UseQuery.IsEmpty then begin
-        Query(GetSQLSpecifity(spUSEQuery, [s]), False);
+        Query(FSqlProvider.GetSql(qUSEQuery, [s]), False);
       end;
       FDatabase := DeQuoteIdent(Value);
       if Assigned(FOnDatabaseChanged) then
@@ -4603,7 +4403,7 @@ begin
   // Detect query for switching current working database or schema
   rx := TRegExpr.Create;
   rx.ModifierI := True;
-  rx.Expression := '^'+GetSQLSpecifity(spUSEQuery);
+  rx.Expression := '^'+FSqlProvider.GetSql(qUSEQuery);
   Quotes := QuoteRegExprMetaChars(FQuoteChars+''';');
   rx.Expression := StringReplace(rx.Expression, ' ', '\s+', [rfReplaceAll]);
   rx.Expression := StringReplace(rx.Expression, '%s', '['+Quotes+']?([^'+Quotes+']+)['+Quotes+']*', [rfReplaceAll]);
@@ -5011,7 +4811,7 @@ begin
   Result := inherited;
   if not Assigned(Result) then begin
     try
-      FAllDatabases := GetCol('SELECT '+QuoteIdent('name')+' FROM '+GetSQLSpecifity(spDatabaseTable)+' ORDER BY '+QuoteIdent('name'));
+      FAllDatabases := GetCol('SELECT '+QuoteIdent('name')+' FROM '+FSqlProvider.GetSql(qDatabaseTable)+' ORDER BY '+QuoteIdent('name'));
     except on E:EDbError do
       FAllDatabases := TStringList.Create;
     end;
@@ -5879,7 +5679,7 @@ begin
   if (not Assigned(FSessionVariables)) or Refresh then begin
     if Assigned(FSessionVariables) then
       FreeAndNil(FSessionVariables);
-    FSessionVariables := GetResults(GetSQLSpecifity(spSessionVariables));
+    FSessionVariables := GetResults(FSqlProvider.GetSql(qSessionVariables));
   end;
   FSessionVariables.First;
   Result := FSessionVariables;
@@ -5934,7 +5734,7 @@ var
 begin
   // Find tables which are currently locked.
   // Used to prevent waiting time in GetDBObjects.
-  sql := GetSQLSpecifity(spLockedTables);
+  sql := FSqlProvider.GetSql(qLockedTables);
   Result := 0;
   if not sql.IsEmpty then try
     LockedTables := GetCol(Format(sql, [QuoteIdent(db,False)]));
@@ -7161,20 +6961,6 @@ begin
 end;
 
 
-function TDBConnection.GetSQLSpecifity(Specifity: TSQLSpecifityId): String;
-begin
-  // Return some version specific SQL clause or snippet
-  Result := FSQLSpecifities[Specifity];
-end;
-
-
-function TDBConnection.GetSQLSpecifity(Specifity: TSQLSpecifityId; const Args: array of const): String;
-begin
-  Result := GetSQLSpecifity(Specifity);
-  Result := Format(Result, Args);
-end;
-
-
 function TDBConnection.ResultCount;
 begin
   case Parameters.NetTypeGroup of
@@ -7232,8 +7018,8 @@ begin
   // Return current user@host combination, used by various object editors for DEFINER clauses
   Log(lcDebug, 'Fetching user@host ...');
   Ping(True);
-  if FCurrentUserHostCombination.IsEmpty and (not GetSQLSpecifity(spCurrentUserHost).IsEmpty) then
-    FCurrentUserHostCombination := GetVar(GetSQLSpecifity(spCurrentUserHost))
+  if FCurrentUserHostCombination.IsEmpty and (not FSqlProvider.GetSql(qCurrentUserHost).IsEmpty) then
+    FCurrentUserHostCombination := GetVar(FSqlProvider.GetSql(qCurrentUserHost))
   else
     FCurrentUserHostCombination := '';
   Result := FCurrentUserHostCombination;
@@ -7681,7 +7467,7 @@ begin
     SchemaSelect := 'SCHEMA_NAME('+QuoteIdent('schema_id')+')';
   try
     Results := GetResults('SELECT o.*, '+SchemaSelect+' AS '+EscapeString('schema')+', rc.RowsInTable'+
-      ' FROM '+QuoteIdent(db)+GetSQLSpecifity(spDbObjectsTable)+ ' AS o'+
+      ' FROM '+QuoteIdent(db)+FSqlProvider.GetSql(qDbObjectsTable)+ ' AS o'+
       ' LEFT JOIN ('+
       '   SELECT object_id, SUM(rows) AS RowsInTable FROM '+QuoteIdent(db)+'.sys.partitions'+
       '   WHERE index_id IN (0,1)'+ // -- heap or clustered index
@@ -7696,11 +7482,11 @@ begin
       obj := TDBObject.Create(Self);
       Cache.Add(obj);
       obj.Name := Results.Col('name');
-      obj.Created := ParseDateTime(Results.Col(GetSQLSpecifity(spDbObjectsCreateCol), True));
-      obj.Updated := ParseDateTime(Results.Col(GetSQLSpecifity(spDbObjectsUpdateCol), True));
+      obj.Created := ParseDateTime(Results.Col(FSqlProvider.GetSql(qDbObjectsCreateCol), True));
+      obj.Updated := ParseDateTime(Results.Col(FSqlProvider.GetSql(qDbObjectsUpdateCol), True));
       obj.Schema := Results.Col('schema');
       obj.Database := db;
-      tp := Trim(Results.Col(GetSQLSpecifity(spDbObjectsTypeCol), True));
+      tp := Trim(Results.Col(FSqlProvider.GetSql(qDbObjectsTypeCol), True));
       if tp = 'U' then
         obj.NodeType := lntTable
       else if tp = 'P' then
@@ -10125,7 +9911,7 @@ begin
           if Assigned(ColAttr) and (ColAttr.DefaultType = cdtAutoInc) then begin
             Row[i].NewText := UnformatNumber(Row[i].NewText);
             if Row[i].NewText = '0' then
-              Row[i].NewText := Connection.GetVar('SELECT ' + Connection.GetSQLSpecifity(spFuncLastAutoIncNumber));
+              Row[i].NewText := Connection.GetVar('SELECT ' + Connection.SqlProvider.GetSql(qFuncLastAutoIncNumber));
             Row[i].NewIsNull := False;
             break;
           end;
@@ -10896,7 +10682,7 @@ begin
   if Schema <> '' then
     Result := Prefix+'_SCHEMA' + '=' + Connection.EscapeString(Schema)
   else
-    Result := Connection.GetSQLSpecifity(spISSchemaCol, [Prefix]) + '=' + Connection.EscapeString(Database);
+    Result := Connection.SqlProvider.GetSql(qISSchemaCol, [Prefix]) + '=' + Connection.EscapeString(Database);
 end;
 
 function TDBObject.RowCount(Reload: Boolean; ForceExact: Boolean=False): Int64;
