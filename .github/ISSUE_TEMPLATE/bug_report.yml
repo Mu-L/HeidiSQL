@@ -11,8 +11,8 @@ body:
   - type: input
     id: heidisql_version
     attributes:
-      label: HeidiSQL version
-      placeholder: "Example: 12.8.0.6908"
+      label: HeidiSQL version and OS
+      placeholder: "Example: 12.15 Linux GTK2"
     validations:
       required: true
   - type: input
