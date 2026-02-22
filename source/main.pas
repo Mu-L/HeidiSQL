@@ -11163,6 +11163,7 @@ end;
 procedure TMainForm.actDisplayTreeFiltersExecute(Sender: TObject);
 begin
   ToolBarTree.Visible := actDisplayTreeFilters.Checked;
+  pnlLeftResize(Sender); // Updates width of filter boxes
   AppSettings.ResetPath;
   AppSettings.WriteBool(asDisplayTreeFilters, actDisplayTreeFilters.Checked);
 end;
