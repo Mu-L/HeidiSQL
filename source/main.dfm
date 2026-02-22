@@ -1886,9 +1886,34 @@ object MainForm: TMainForm
       object Inverseselection1: TMenuItem
         Action = actSelectInverse
       end
-      object actFindInVT1: TMenuItem
+    end
+    object MainMenuDisplay: TMenuItem
+      Caption = 'Display'
+      object menuDisplaysizeofobjects1: TMenuItem
+        Action = actDisplayObjectSize
+        AutoCheck = True
+      end
+      object menuShowonlyfavorites1: TMenuItem
+        Action = actFavoriteObjectsOnly
+        AutoCheck = True
+      end
+      object menuFilterpanel1: TMenuItem
         Action = actFilterPanel
         AutoCheck = True
+      end
+      object menuDisplayLogPanel1: TMenuItem
+        Action = actDisplayLogPanel
+        AutoCheck = True
+      end
+      object menuTreefilters1: TMenuItem
+        Action = actDisplayTreeFilters
+        AutoCheck = True
+      end
+      object N27: TMenuItem
+        Caption = '-'
+      end
+      object menuResetpaneldimensions1: TMenuItem
+        Action = actResetPanelDimensions
       end
     end
     object MainMenuSearch: TMenuItem
@@ -2055,9 +2080,6 @@ object MainForm: TMainForm
       end
       object N4: TMenuItem
         Caption = '-'
-      end
-      object Resetpaneldimensions1: TMenuItem
-        Action = actResetPanelDimensions
       end
       object MenuPreferences: TMenuItem
         Action = actPreferences
@@ -2831,7 +2853,6 @@ object MainForm: TMainForm
       AutoCheck = True
       Caption = 'Filter panel'
       Hint = 'Activates the filter panel'
-      ImageIndex = 30
       ImageName = 'icons8-find'
       ShortCut = 49222
       OnExecute = actFilterPanelExecute
@@ -3386,6 +3407,24 @@ object MainForm: TMainForm
       ImageIndex = 57
       OnExecute = actQueryTableExecute
     end
+    object actDisplayObjectSize: TAction
+      Category = 'Various'
+      AutoCheck = True
+      Caption = 'Display size of objects'
+      OnExecute = actDisplayObjectSizeExecute
+    end
+    object actDisplayLogPanel: TAction
+      Category = 'Various'
+      AutoCheck = True
+      Caption = 'Log panel'
+      OnExecute = actDisplayLogPanelExecute
+    end
+    object actDisplayTreeFilters: TAction
+      Category = 'Various'
+      AutoCheck = True
+      Caption = 'Tree filters'
+      OnExecute = actDisplayTreeFiltersExecute
+    end
   end
   object menuConnections: TPopupMenu
     AutoHotkeys = maManual
@@ -3499,8 +3538,8 @@ object MainForm: TMainForm
         AutoCheck = True
       end
       object menuShowSizeColumn: TMenuItem
-        Caption = 'Display size of objects'
-        OnClick = menuShowSizeColumnClick
+        Action = actDisplayObjectSize
+        AutoCheck = True
       end
       object menuAutoExpand: TMenuItem
         Caption = 'Auto expand on click'
