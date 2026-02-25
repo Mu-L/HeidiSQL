@@ -1309,6 +1309,7 @@ type
     procedure SetSnippetFilenames;
     function TreeClickHistoryPrevious(MayBeNil: Boolean=False): PVirtualNode;
     procedure OperationRunning(Runs: Boolean);
+    procedure OpenQueryFiles(Filenames: TStrings; Encoding: TEncoding; ForceRun: Boolean);
     function RunQueryFiles(Filenames: TStrings; Encoding: TEncoding; ForceRun: Boolean): Boolean;
     function RunQueryFile(Filename: String; Encoding: TEncoding; Conn: TDBConnection;
       ProgressDialog: IProgressDialog; FilesizeSum: Int64; var CurrentPosition: Int64): Boolean;
@@ -2215,7 +2216,6 @@ var
   StatsCall: THttpDownload;
   SessionPaths: TStringlist;
   DlgResult: TModalResult;
-  Tab: TQueryTab;
   SessionManager: TConnForm;
 begin
   if AppSettings.ReadBool(asUpdatecheck) then begin
@@ -2350,14 +2350,7 @@ begin
   end;
 
   // Load SQL file(s) by command line
-  if not RunQueryFiles(FileNames, nil, false) then begin
-    for i:=0 to FileNames.Count-1 do begin
-      Tab := GetOrCreateEmptyQueryTab(False);
-      Tab.LoadContents(FileNames[i], True, nil);
-      if i = FileNames.Count-1 then
-        SetMainTab(Tab.TabSheet);
-    end;
-  end;
+  OpenQueryFiles(FileNames, nil, False);
 
   MainFormAfterCreateDone := True;
 end;
@@ -3980,10 +3973,9 @@ end;
 // Load SQL-file, make sure that SheetQuery is activated
 procedure TMainForm.actLoadSQLExecute(Sender: TObject);
 var
-  i, ProceedResult: Integer;
+  ProceedResult: Integer;
   Dialog: TExtFileOpenDialog;
   Encoding: TEncoding;
-  Tab: TQueryTab;
 begin
   AppSettings.ResetPath;
   Dialog := TExtFileOpenDialog.Create(Self);
@@ -4005,18 +3997,56 @@ begin
     end;
 
     if ProceedResult = mrYes then begin
-      if not RunQueryFiles(Dialog.Files, Encoding, Sender=actRunSQL) then begin
-        for i:=0 to Dialog.Files.Count-1 do begin
-          Tab := GetOrCreateEmptyQueryTab(False);
-          Tab.LoadContents(Dialog.Files[i], True, Encoding);
-          if i = Dialog.Files.Count-1 then
-            SetMainTab(Tab.TabSheet);
-        end;
-      end;
+      OpenQueryFiles(Dialog.Files, Encoding, Sender=actRunSQL);
     end;
     AppSettings.WriteInt(asFileDialogEncoding, Dialog.EncodingIndex, Self.Name);
   end;
   Dialog.Free;
+end;
+
+
+procedure TMainForm.OpenQueryFiles(Filenames: TStrings; Encoding: TEncoding; ForceRun: Boolean);
+var
+  Tab, FileInTab: TQueryTab;
+  FileHints: TStringList;
+  i: Integer;
+begin
+  // Decides whether to run or load files, prevents duplicates etc.
+  if RunQueryFiles(Filenames, Encoding, ForceRun) then
+    Exit;
+
+  FileHints := TStringList.Create;
+
+  for i:=0 to Filenames.Count-1 do begin
+
+    FileInTab := nil;
+    for Tab in QueryTabs do begin
+      if Tab.MemoFilename = Filenames[i] then begin
+        FileInTab := Tab;
+        FileHints.Add(f_('This file is already open in query tab #%d.', [FileInTab.Number]) + ' ' + ExtractFileName(Filenames[i]));
+        if i = Filenames.Count-1 then
+          SetMainTab(FileInTab.TabSheet);
+        Break;
+      end;
+    end;
+
+    if not Assigned(FileInTab) then begin
+      Tab := GetOrCreateEmptyQueryTab(False);
+      Tab.LoadContents(Filenames[i], True, Encoding);
+      if i = Filenames.Count-1 then
+        SetMainTab(Tab.TabSheet);
+    end;
+  end;
+
+  if not FileHints.IsEmpty then begin
+    if MainFormAfterCreateDone then
+      MessageDialog(FileHints.Text, mtInformation, [mbOK])
+    else begin
+      for i:=0 to FileHints.Count-1 do
+        LogSQL(FileHints[i]);
+    end;
+  end;
+  FileHints.Free;
 end;
 
 
@@ -5245,7 +5275,6 @@ var
   Filename: String;
   FileList: TStringList;
   p: Integer;
-  Tab: TQueryTab;
 begin
   // Click on the popupQueryLoad
   Filename := (Sender as TMenuItem).Caption;
@@ -5258,10 +5287,7 @@ begin
   end;
   FileList := TStringList.Create;
   FileList.Add(Filename);
-  if not RunQueryFiles(FileList, nil, false) then begin
-    Tab := GetOrCreateEmptyQueryTab(True);
-    Tab.LoadContents(Filename, True, nil);
-  end;
+  OpenQueryFiles(FileList, nil, False);
   FileList.Free;
 end;
 
@@ -7698,18 +7724,10 @@ end;
 
 procedure TMainForm.SynMemoQueryDropFiles(Sender: TObject; X, Y: Integer;
   AFiles: TUnicodeStrings);
-var
-  i: Integer;
-  Tab: TQueryTab;
 begin
   // One or more files from explorer or somewhere else was dropped onto the
   // query-memo - load their contents into seperate tabs
-  if not RunQueryFiles(AFiles, nil, False) then begin
-    for i:=0 to AFiles.Count-1 do begin
-      Tab := GetOrCreateEmptyQueryTab(True);
-      Tab.LoadContents(AFiles[i], False, nil);
-    end;
-  end;
+  OpenQueryFiles(AFiles, nil, False);
 end;
 
 
@@ -13822,9 +13840,7 @@ end;
 
 procedure TMainForm.WMCopyData(var Msg: TWMCopyData);
 var
-  i: Integer;
   Connection: TDBConnection;
-  Tab: TQueryTab;
   ConnectionParams: TConnectionParameters;
   FileNames: TStringList;
   RunFrom: String;
@@ -13834,12 +13850,7 @@ begin
     LogSQL(f_('Preventing second application instance - disabled in %s > %s > %s.', [_('Tools'), _('Preferences'), _('General')]), lcInfo);
     ConnectionParams := nil;
     ParseCommandLine(ParamBlobToStr(Msg.CopyDataStruct.lpData), ConnectionParams, FileNames, RunFrom);
-    if not RunQueryFiles(FileNames, nil, False) then begin
-      for i:=0 to FileNames.Count-1 do begin
-        Tab := GetOrCreateEmptyQueryTab(True);
-        Tab.LoadContents(FileNames[i], True, nil);
-      end;
-    end;
+    OpenQueryFiles(FileNames, nil, False);
     if ConnectionParams <> nil then
       InitConnection(ConnectionParams, True, Connection);
   end else
