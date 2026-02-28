@@ -3334,6 +3334,12 @@ begin
       'SHOW TABLE STATUS LIKE :EscapedName',
       ''
       );
+    qGetReverseForeignKeys: Result := 'SELECT DISTINCT'+
+      ' k.TABLE_SCHEMA, k.TABLE_NAME'+
+      ' FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE k'+
+      ' WHERE'+
+      '   REFERENCED_TABLE_SCHEMA = :EscapedDatabase AND'+
+      '   REFERENCED_TABLE_NAME = :EscapedName';
     else Result := inherited;
   end;
 end;

@@ -16,7 +16,9 @@ type
     btnDiscard: TButton;
     btnHelp: TButton;
     listColumns: TVirtualStringTree;
+    ListViewReverseForeignKeys: TListView;
     PageControlMain: TPageControl;
+    spltForeignKeyListings: TSplitter;
     tabBasic: TTabSheet;
     tabIndexes: TTabSheet;
     tabOptions: TTabSheet;
@@ -41,6 +43,7 @@ type
     comboCollation: TComboBox;
     lblEngine: TLabel;
     comboEngine: TComboBox;
+    btnShowReverseForeignKeys: TToolButton;
     treeIndexes: TVirtualStringTree;
     tlbIndexes: TToolBar;
     btnAddIndex: TToolButton;
@@ -94,6 +97,8 @@ type
     btnClearCheckConstraints: TToolButton;
     listCheckConstraints: TVirtualStringTree;
     Copy1: TMenuItem;
+    procedure btnShowReverseForeignKeysClick(Sender: TObject);
+    procedure ListViewReverseForeignKeysDblClick(Sender: TObject);
     procedure Modification(Sender: TObject);
     procedure btnAddColumnClick(Sender: TObject);
     procedure btnRemoveColumnClick(Sender: TObject);
@@ -207,6 +212,7 @@ type
     { Private declarations }
     FLoaded: Boolean;
     CreateCodeValid, AlterCodeValid: Boolean;
+    FReverseForeignKeysLoaded: Boolean;
     FColumns: TTableColumnList;
     FKeys, FDeletedKeys: TTableKeyList;
     FForeignKeys: TForeignKeyList;
@@ -242,6 +248,7 @@ type
     procedure CalcMinColWidth;
     procedure UpdateTabCaptions;
     function MoveNodeAllowed(Sender: TVirtualStringTree): Boolean;
+    procedure LoadReverseForeignKeys(Sender: TObject);
   public
     { Public declarations }
     constructor Create(AOwner: TComponent); override;
@@ -284,6 +291,7 @@ begin
   for i in ColNumsCheckboxes do begin
     listColumns.Header.Columns[i].Alignment := taCenter;
   end;
+  btnShowReverseForeignKeys.Down := AppSettings.ReadBool(asDisplayReverseForeignKeys);
   FixVT(listColumns);
   FixVT(treeIndexes);
   FixVT(listForeignKeys);
@@ -442,6 +450,8 @@ begin
   ResetModificationFlags;
   CreateCodeValid := False;
   AlterCodeValid := False;
+  FReverseForeignKeysLoaded := False;
+  btnShowReverseForeignKeysClick(Self);
   PageControlMainChange(Self); // Foreign key editor needs a hit
   // Buttons are randomly moved, since VirtualTree update, see #440
   btnSave.Top := Height - btnSave.Height - 3;
@@ -1040,6 +1050,43 @@ begin
     UpdateSQLcode;
     CalcMinColWidth;
   end;
+end;
+
+procedure TfrmTableEditor.ListViewReverseForeignKeysDblClick(Sender: TObject);
+var
+  ClickItem: TListItem;
+  Obj: TDBObject;
+begin
+  // Create virtual object and let mainform search for it in the tree
+  ClickItem := ListViewReverseForeignKeys.Selected;
+  if not Assigned(ClickItem) then
+    Exit;
+  Obj := TDBObject.Create(DBObject.Connection);
+  Obj.NodeType := lntTable;
+  Obj.Database := ClickItem.Caption;
+  Obj.Name := ClickItem.SubItems[0];
+  MainForm.ActiveDbObj := Obj;
+end;
+
+procedure TfrmTableEditor.btnShowReverseForeignKeysClick(Sender: TObject);
+var
+  DoShow: Boolean;
+begin
+  DoShow := btnShowReverseForeignKeys.Down;
+  if DoShow then begin
+    spltForeignKeyListings.Visible := True;
+    ListViewReverseForeignKeys.Visible := True;
+    spltForeignKeyListings.BringToFront;
+    spltForeignKeyListings.Left := ListViewReverseForeignKeys.Left - spltForeignKeyListings.Width;
+    ListViewReverseForeignKeys.BringToFront;
+    LoadReverseForeignKeys(Sender);
+  end
+  else begin
+    ListViewReverseForeignKeys.Visible := False;
+    spltForeignKeyListings.Visible := False;
+    listForeignKeys.Width := listForeignKeys.Parent.Width - tlbForeignKeys.Width;
+  end;
+  AppSettings.WriteBool(asDisplayReverseForeignKeys, DoShow);
 end;
 
 
@@ -2554,7 +2601,10 @@ begin
   listForeignKeys.EndEditNode;
   listCheckConstraints.EndEditNode;
   // Ensure SynMemo's have focus, otherwise Select-All and Copy actions may fail
-  if PageControlMain.ActivePage = tabCREATEcode then begin
+  if PageControlMain.ActivePage = tabForeignKeys then begin
+    LoadReverseForeignKeys(Sender);
+  end
+  else if PageControlMain.ActivePage = tabCREATEcode then begin
     SynMemoCreateCode.TrySetFocus;
   end
   else if PageControlMain.ActivePage = tabALTERcode then begin
@@ -3068,6 +3118,40 @@ begin
   end;
 end;
 
+procedure TfrmTableEditor.LoadReverseForeignKeys(Sender: TObject);
+var
+  SqlGet: String;
+  Results: TDBQuery;
+  ListItem: TListItem;
+begin
+  if FReverseForeignKeysLoaded then
+    Exit;
+  if not ListViewReverseForeignKeys.Visible then
+    Exit;
+  if not ObjectExists then // Jump out early when creating a new table
+    Exit;
+  SqlGet := DBObject.Connection.SqlProvider.GetSql(qGetReverseForeignKeys, DBObject.AsStringMap);
+  if SqlGet.IsEmpty then begin
+    MainForm.LogSQL(_('Database does not provide reverse foreign key listing'));
+    Exit;
+  end;
+  ListViewReverseForeignKeys.Items.BeginUpdate;
+  ListViewReverseForeignKeys.Clear;
+  try
+    Results := DBObject.Connection.GetResults(SqlGet);
+    while not Results.Eof do begin
+      ListItem := ListViewReverseForeignKeys.Items.Add;
+      ListItem.ImageIndex := ICONINDEX_TABLE;
+      ListItem.Caption := Results.Col(0);
+      ListItem.SubItems.Add(Results.Col(1));
+      Results.Next;
+    end;
+  except
+    on EDbError do;
+  end;
+  ListViewReverseForeignKeys.Items.EndUpdate;
+  FReverseForeignKeysLoaded := True;
+end;
 
 procedure TfrmTableEditor.btnHelpClick(Sender: TObject);
 begin

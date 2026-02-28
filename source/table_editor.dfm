@@ -37,7 +37,7 @@ object frmTableEditor: TfrmTableEditor
       ImageName = 'icons8-data-sheet-100'
       DesignSize = (
         686
-        121)
+        120)
       object lblName: TLabel
         Left = 4
         Top = 6
@@ -235,10 +235,10 @@ object frmTableEditor: TfrmTableEditor
       ImageName = 'icons8-lightning-bolt-100'
       object treeIndexes: TVirtualStringTree
         AlignWithMargins = True
-        Left = 69
+        Left = 73
         Top = 0
-        Width = 614
-        Height = 121
+        Width = 610
+        Height = 120
         Margins.Top = 0
         Margins.Bottom = 0
         Align = alClient
@@ -275,7 +275,7 @@ object frmTableEditor: TfrmTableEditor
             Options = [coEnabled, coParentBidiMode, coParentColor, coResizable, coShowDropMark, coVisible, coAllowFocus]
             Position = 0
             Text = 'Name'
-            Width = 214
+            Width = 226
           end
           item
             Options = [coEnabled, coParentBidiMode, coParentColor, coResizable, coShowDropMark, coVisible, coAllowFocus]
@@ -302,11 +302,11 @@ object frmTableEditor: TfrmTableEditor
       object tlbIndexes: TToolBar
         Left = 0
         Top = 0
-        Width = 66
-        Height = 121
+        Width = 70
+        Height = 120
         Align = alLeft
         AutoSize = True
-        ButtonWidth = 66
+        ButtonWidth = 70
         Caption = 'tlbIndexes'
         Images = MainForm.VirtualImageListMain
         List = True
@@ -367,14 +367,23 @@ object frmTableEditor: TfrmTableEditor
       Caption = 'Foreign keys'
       ImageIndex = 136
       ImageName = 'icons8-data-grid-relation'
+      object spltForeignKeyListings: TSplitter
+        Left = 573
+        Top = 0
+        Height = 120
+        Align = alRight
+        Visible = False
+        ExplicitLeft = 494
+        ExplicitTop = -3
+      end
       object tlbForeignKeys: TToolBar
         Left = 0
         Top = 0
-        Width = 66
-        Height = 121
+        Width = 70
+        Height = 120
         Align = alLeft
         AutoSize = True
-        ButtonWidth = 66
+        ButtonWidth = 70
         Caption = 'tlbForeignKeys'
         Images = MainForm.VirtualImageListMain
         List = True
@@ -406,14 +415,24 @@ object frmTableEditor: TfrmTableEditor
           Enabled = False
           ImageIndex = 26
           ImageName = 'icons8-close-button'
+          Wrap = True
           OnClick = btnClearForeignKeysClick
+        end
+        object btnShowReverseForeignKeys: TToolButton
+          Left = 0
+          Top = 66
+          Hint = 'Show reverse foreign keys'
+          Caption = 'Reverse'
+          ImageIndex = 40
+          Style = tbsCheck
+          OnClick = btnShowReverseForeignKeysClick
         end
       end
       object listForeignKeys: TVirtualStringTree
-        Left = 66
+        Left = 70
         Top = 0
-        Width = 620
-        Height = 121
+        Width = 503
+        Height = 120
         Margins.Top = 0
         Margins.Bottom = 0
         Align = alClient
@@ -474,8 +493,31 @@ object frmTableEditor: TfrmTableEditor
             Options = [coDraggable, coEnabled, coParentBidiMode, coParentColor, coResizable, coShowDropMark, coVisible, coAllowFocus]
             Position = 5
             Text = 'On DELETE'
-            Width = 80
+            Width = 10
           end>
+      end
+      object ListViewReverseForeignKeys: TListView
+        Left = 576
+        Top = 0
+        Width = 110
+        Height = 120
+        Align = alRight
+        Columns = <
+          item
+            AutoSize = True
+            Caption = 'Database'
+          end
+          item
+            AutoSize = True
+            Caption = 'Table'
+          end>
+        ColumnClick = False
+        ReadOnly = True
+        RowSelect = True
+        TabOrder = 2
+        ViewStyle = vsReport
+        Visible = False
+        OnDblClick = ListViewReverseForeignKeysDblClick
       end
     end
     object tabCheckConstraints: TTabSheet
@@ -484,11 +526,11 @@ object frmTableEditor: TfrmTableEditor
       object tlbCheckConstraints: TToolBar
         Left = 0
         Top = 0
-        Width = 66
-        Height = 121
+        Width = 70
+        Height = 120
         Align = alLeft
         AutoSize = True
-        ButtonWidth = 66
+        ButtonWidth = 70
         Caption = 'tlbCheckConstraints'
         Images = MainForm.VirtualImageListMain
         List = True
@@ -521,10 +563,10 @@ object frmTableEditor: TfrmTableEditor
         end
       end
       object listCheckConstraints: TVirtualStringTree
-        Left = 66
+        Left = 70
         Top = 0
-        Width = 620
-        Height = 121
+        Width = 616
+        Height = 120
         Align = alClient
         DefaultNodeHeight = 19
         EditDelay = 0
@@ -558,7 +600,7 @@ object frmTableEditor: TfrmTableEditor
             Options = [coDraggable, coEnabled, coParentBidiMode, coParentColor, coResizable, coShowDropMark, coVisible, coAllowFocus, coEditable, coStyleColor]
             Position = 1
             Text = 'Check clause'
-            Width = 416
+            Width = 412
           end>
       end
     end
@@ -569,8 +611,8 @@ object frmTableEditor: TfrmTableEditor
       object SynMemoPartitions: TSynMemo
         Left = 0
         Top = 0
-        Width = 593
-        Height = 121
+        Width = 686
+        Height = 120
         SingleLineMode = False
         Align = alClient
         Font.Charset = DEFAULT_CHARSET
@@ -611,8 +653,8 @@ object frmTableEditor: TfrmTableEditor
       object SynMemoCREATEcode: TSynMemo
         Left = 0
         Top = 0
-        Width = 593
-        Height = 121
+        Width = 686
+        Height = 120
         SingleLineMode = False
         Align = alClient
         Font.Charset = DEFAULT_CHARSET
@@ -653,8 +695,8 @@ object frmTableEditor: TfrmTableEditor
       object SynMemoALTERcode: TSynMemo
         Left = 0
         Top = 0
-        Width = 593
-        Height = 121
+        Width = 686
+        Height = 120
         SingleLineMode = False
         Align = alClient
         Font.Charset = DEFAULT_CHARSET
@@ -714,7 +756,7 @@ object frmTableEditor: TfrmTableEditor
       Margins.Bottom = 0
       Align = alClient
       AutoSize = True
-      ButtonWidth = 66
+      ButtonWidth = 70
       Caption = 'Columns:'
       Images = MainForm.VirtualImageListMain
       List = True
@@ -730,7 +772,7 @@ object frmTableEditor: TfrmTableEditor
         OnClick = btnAddColumnClick
       end
       object btnRemoveColumn: TToolButton
-        Left = 66
+        Left = 70
         Top = 0
         Hint = 'Remove column'
         Caption = 'Remove'
@@ -739,7 +781,7 @@ object frmTableEditor: TfrmTableEditor
         OnClick = btnRemoveColumnClick
       end
       object btnMoveUpColumn: TToolButton
-        Left = 132
+        Left = 140
         Top = 0
         Hint = 'Move up'
         Caption = 'Up'
@@ -748,7 +790,7 @@ object frmTableEditor: TfrmTableEditor
         OnClick = btnMoveUpColumnClick
       end
       object btnMoveDownColumn: TToolButton
-        Left = 198
+        Left = 210
         Top = 0
         Hint = 'Move down'
         Caption = 'Down'
